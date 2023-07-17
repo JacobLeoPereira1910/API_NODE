@@ -4,6 +4,8 @@ const dotenv = require('dotenv');
 const exphbs = require('hbs');
 const jwt = require("jsonwebtoken");
 const mysql = require("mysql");
+const bcrypt = require("bcryptjs");
+
 
 dotenv.config({ path: './.env' });
 
@@ -48,7 +50,6 @@ app.post("/access", (req, res) => {
             console.log(err);
             return res.status(500).json({ message: 'Erro ao executar a consulta no banco de dados' });
         }
-
         // Verifique se o login foi bem-sucedido
         if (result.length > 0) {
             // Autenticação bem-sucedida, você pode gerar um token JWT aqui, se necessário
@@ -121,6 +122,10 @@ app.get("/login", (req, res) => {
     res.render("login")
 })
 
+app.get("/register", (req, res) => {
+    res.render("register")
+})
+
 app.get("/access", (req, res) => {
     const { email, password } = req.body;
 
@@ -157,6 +162,39 @@ app.get("/access", (req, res) => {
         return res.redirect('/getPayload').set('Authorization', `Bearer ${token}`);
     });
 });
+app.post("/auth/register", (req, res) => {
+    const { name, email, password, password_confirm } = req.body
+
+    db.query('SELECT email FROM users WHERE email = ?', [email], async (error, result) => {
+        if (error) {
+            console.log(error)
+        }
+
+        if (result.length > 0) {
+            return res.render('register', {
+                message: 'This email is already in use'
+            })
+        } else if (password !== password_confirm) {
+            return res.render('register', {
+                message: 'Password Didn\'t Match!'
+            })
+        }
+
+        let hashedPassword = await bcrypt.hash(password, 8)
+
+        console.log(hashedPassword)
+
+        db.query('INSERT INTO users SET?', { name: name, email: email, password: hashedPassword }, (err, result) => {
+            if (error) {
+                console.log(error)
+            } else {
+                return res.render('register', {
+                    message: 'User registered!'
+                })
+            }
+        })
+    })
+})
 
 // Defina as suas outras rotas aqui
 
