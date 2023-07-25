@@ -21,21 +21,21 @@
     </nav>
 
     {{!-- Body --}}
-    <div class="container mt-4">
-        <div class="card" style="width: 18rem;">            
-            <div class="card-header">Login Form</div>    
+    <div class="container">
+        <div class="card" style="">            
+            <div class="card-header">Login</div>    
             <div class="card-body">
                 <form action="/access" method="POST">
                     <div class="mb-3">
-                        <label for="email-lgn" class="form-label">Name</label>
-                        <input type="text" class="form-control" id="email-lgn" name="email">                        
+                        <label for="email-lgn" class="form-label">Usuário </label>
+                        <input type="text" class="form-control" id="email-lgn" name="user">                        
                     </div>                    
                     <div class="mb-3">
-                        <label for="password-lgn" class="form-label">Password</label>
+                        <label for="password-lgn" class="form-label">Senha </label>
                         <input type="password" class="form-control" id="password-lgn" name="password">
                     </div>
                     
-                    <button type="submit" class="btn btn-primary">Submit</button>
+                    <button type="submit" class="btn btn-primary">Enviar</button>
                 </form>
             </div>
         </div>

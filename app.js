@@ -1,35 +1,30 @@
 const express = require('express');
-const path = require("path");
+const path = require('path');
 const dotenv = require('dotenv');
 const exphbs = require('hbs');
-const jwt = require("jsonwebtoken");
-const mysql = require("mysql");
-const bcrypt = require("bcryptjs");
-
+const jwt = require('jsonwebtoken');
+const mysql = require('mysql');
+const bcrypt = require('bcryptjs');
+const fetch = require('node-fetch');
+const cookieParser = require('cookie-parser');
+const publicDir = path.join(__dirname, './public');
 
 dotenv.config({ path: './.env' });
 
 const app = express();
-
-// Configurações do Express
-
-const publicDir = path.join(__dirname, './public');
-
-app.use(express.static(publicDir));
-app.use(express.urlencoded({ extended: false }));
+app.use(cookieParser());
 app.use(express.json());
-
+app.use(express.urlencoded({ extended: false }));
+app.use(express.static(publicDir));
 app.set('view engine', 'hbs');
 app.set('views', path.join(__dirname, 'views'));
 
-// Configuração do banco de dados (MySQL)
 const db = mysql.createConnection({
     host: 'localhost',
     user: 'root',
     password: '',
     database: 'dados'
 });
-
 
 db.connect((err) => {
     if (err) {
@@ -39,167 +34,126 @@ db.connect((err) => {
     }
 });
 
-// Rota de acesso (login)
-
-app.post("/access", (req, res) => {
-    const { email, password } = req.body;
-
-    // Execute a consulta ao banco de dados para verificar o login
-    db.query('SELECT * FROM users WHERE email = ? AND password = ?', [email, password], (err, result) => {
-        if (err) {
-            console.log(err);
-            return res.status(500).json({ message: 'Erro ao executar a consulta no banco de dados' });
-        }
-        // Verifique se o login foi bem-sucedido
-        if (result.length > 0) {
-            // Autenticação bem-sucedida, você pode gerar um token JWT aqui, se necessário
-            const id = result[0].id; // supondo que o ID do usuário está na coluna 'id' da tabela 'users'
-            const payload = {
-                userId: id,
-                email: email,
-                role: 'user'
-            };
-            const token = jwt.sign(payload, process.env.KEY, {
-                expiresIn: 300 // expires in 5min
-            });
-            // Redirecionar para a rota '/getPayload' com o token no cabeçalho Authorization
-            res.setHeader('Authorization', `Bearer ${token}`);
-            return res.redirect('/getPayload');
-        } else {
-            // Login inválido
-            return res.status(401).json({ message: 'Invalid login' });
-        }
-    });
-});
-
-// Rotas protegidas
-
 const router = express.Router();
 
-router.get("/", (req, res) => {
-    const token = req.headers.authorization;
-
-    if (!token) {
-        return res.status(401).json({ message: "Token not provided" });
-    }
-
-    jwt.verify(token, process.env.KEY, (err, decoded) => {
-        if (err) {
-            return res.status(401).json({ message: "Invalid token" });
-        }
-
-        // O token é válido, você pode acessar o payload decodificado na variável 'decoded'
-
-        // Exemplo de uso do payload
-        const userId = decoded.userId;
-        const userEmail = decoded.email;
-        const userRole = decoded.role;
-
-        // Realize as operações necessárias para a rota protegida aqui
-
-        return res.status(200).json({ message: "Protected route accessed successfully" });
-    });
-});
-
-router.get("/getPayload", (req, res) => {
-    const token = req.headers.authorization; // Assume que o token JWT é enviado no cabeçalho Authorization
-
-    if (!token) {
-        return res.status(401).json({ message: "Token not provided" });
-    }
-
-    jwt.verify(token, process.env.KEY, (err, decoded) => {
-        if (err) {
-            return res.status(401).json({ message: "Invalid token" });
-        }
-
-        // O payload está contido na variável 'decoded'
-        return res.status(200).json({ payload: decoded });
-    });
-});
-
-app.get("/login", (req, res) => {
-    res.render("login")
-})
-
-app.get("/register", (req, res) => {
-    res.render("register")
-})
-
-app.get("/access", (req, res) => {
-    const { email, password } = req.body;
-
-    // Execute a consulta ao banco de dados para verificar o login
-    db.query('SELECT * FROM users WHERE email = ?', [email], async (err, result) => {
-        if (err) {
-            console.log(err);
-            return res.status(500).json({ message: 'Erro ao executar a consulta no banco de dados' });
-        }
-
-        // Verifique se o usuário existe
-        if (result.length === 0) {
-            return res.status(401).json({ message: 'Invalid login' });
-        }
-
-        const user = result[0];
-
-        // Verifique se a senha está correta
-        const passwordMatch = await bcrypt.compare(password, user.password);
-        if (!passwordMatch) {
-            return res.status(401).json({ message: 'Invalid login' });
-        }
-
-        // Autenticação bem-sucedida, você pode gerar um token JWT aqui, se necessário
-        const payload = {
-            userId: user.id,
-            email: user.email,
-            role: 'user'
-        };
-        const token = jwt.sign(payload, process.env.KEY, {
-            expiresIn: 300 // expires in 5min
-        });
-
-        return res.redirect('/getPayload').set('Authorization', `Bearer ${token}`);
-    });
-});
-app.post("/auth/register", (req, res) => {
-    const { name, email, password, password_confirm } = req.body
-
-    db.query('SELECT email FROM users WHERE email = ?', [email], async (error, result) => {
-        if (error) {
-            console.log(error)
-        }
-
-        if (result.length > 0) {
-            return res.render('register', {
-                message: 'This email is already in use'
-            })
-        } else if (password !== password_confirm) {
-            return res.render('register', {
-                message: 'Password Didn\'t Match!'
-            })
-        }
-
-        let hashedPassword = await bcrypt.hash(password, 8)
-
-        console.log(hashedPassword)
-
-        db.query('INSERT INTO users SET?', { name: name, email: email, password: hashedPassword }, (err, result) => {
-            if (error) {
-                console.log(error)
-            } else {
-                return res.render('register', {
-                    message: 'User registered!'
-                })
-            }
-        })
-    })
-})
-
-// Defina as suas outras rotas aqui
+// Defina as rotas aqui
 
 app.use('/', router);
 
-app.listen(5000, () => {
-    console.log("Server started on port 5000");
+router.get("/login", (req, res) => {
+    res.render("login");
+});
+
+router.get("/register", (req, res) => {
+    res.render("register");
+});
+
+router.get('/', (req, res) => {
+    const sql = 'SELECT * FROM users';
+
+    db.query(sql, (err, result) => {
+        if (err) {
+            console.log('Erro ao executar a consulta no banco de dados:', err);
+            return res.status(500).json({ message: 'Erro ao executar a consulta no banco de dados' });
+        }
+
+        const users = result.map(item => item.user);
+        res.json(users);
+    });
+});
+
+router.post("/auth/register", async (req, res) => {
+    const { name, email, password, password_confirm, user } = req.body;
+
+    try {
+        const result = await db.query('SELECT email FROM users WHERE email = ?', [email]);
+        if (result.length > 0) {
+            return res.render('register', {
+                message: 'Esse email já está em uso'
+            });
+        } else if (password !== password_confirm) {
+            return res.render('register', {
+                message: 'Senha incorreta'
+            });
+        }
+
+        const hashedPassword = await bcrypt.hash(password, 8);
+        await db.query('INSERT INTO users SET?', { name, email, password: hashedPassword, user });
+
+        return res.render('register', {
+            message: 'Usuário registrado com sucesso!'
+        });
+    } catch (error) {
+        console.log('Erro ao registrar o usuário:', error);
+        return res.status(500).json({ message: 'Erro ao registrar o usuário' });
+    }
+});
+
+
+router.post('/access', async (req, res) => {
+    const { user, password } = req.body;
+
+
+    db.query('SELECT * FROM users WHERE user = ?', [user], async (err, result) => {
+        if (result.length === 0) {
+            return res.status(401).json({ message: 'Usuário inválido' });
+        }
+
+        const userData = result[0];
+        if (!userData.password) {
+            return res.status(401).json({ message: 'Senha não encontrada para o usuário' });
+        }
+
+        const passwordMatch = await bcrypt.compare(password, userData.password);
+        if (!passwordMatch) {
+            return res.status(401).json({ message: 'Senha incorreta' });
+        }
+
+        const payload = {
+            userId: userData.id,
+            email: userData.email,
+            role: 'user'
+        };
+
+        const token = jwt.sign(payload, process.env.KEY, {
+            expiresIn: '5m' // expira em 5 minutos
+        });
+
+        res.cookie('access_token', token, {
+            httpOnly: true,
+            secure: true, // Defina 'secure' como true para conexões HTTPS
+            sameSite: 'lax', // Ajuste o atributo sameSite de acordo com seu caso de uso
+            maxAge: 300000 // 5 minutos em milissegundos
+        });
+
+        // Send only the necessary data in the response, not the entire 'result' or 'userData' objects
+        return res.status(200).json({ user: payload });
+
+    });
+});
+
+router.get('/page', (req, res) => {
+    const token = req.cookies.access_token;
+
+    if (!token) {
+        return res.status(401).json({ message: 'Token não fornecido' });
+    }
+
+    jwt.verify(token, process.env.KEY, (err, decoded) => {
+        if (err) {
+            return res.status(401).json({ message: 'Token inválido' });
+        }
+
+        const { userId, email, role } = decoded;
+
+        // Realize as operações necessárias para a rota protegida aqui
+
+        console.log('Payload decodificado:', decoded);
+        return res.status(200).json({ message: 'Rota protegida acessada com sucesso' });
+    });
+});
+
+const port = 3000;
+app.listen(port, () => {
+    console.log(`Servidor rodando na porta ${port}`);
 });
