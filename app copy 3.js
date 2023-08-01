@@ -58,65 +58,6 @@ const router = express.Router();
 
 app.use('/', router);
 
-
-
-const authenticateUser = async (user, password, db) => {
-    try {
-        const queryResult = await new Promise((resolve, reject) => {
-            db.query('SELECT * FROM users WHERE user = ?', [user], (err, result) => {
-                if (err) reject(err);
-                resolve(result);
-            });
-        });
-
-        if (queryResult.length === 0) {
-            return { success: false, message: 'Usuário inválido' };
-        }
-
-        const userData = queryResult[0];
-        if (!userData.password) {
-            return { success: false, message: 'Senha não encontrada para o usuário' };
-        }
-
-        const passwordMatch = await bcrypt.compare(password, userData.password);
-        if (!passwordMatch) {
-            return { success: false, message: 'Senha incorreta' };
-        }
-
-        const payload = {
-            userId: userData.id,
-            email: userData.email,
-            role: 'user'
-        };
-
-        const token = jwt.sign(payload, process.env.KEY, {
-            expiresIn: '5m' // expira em 5 minutos
-        });
-
-        return { success: true, token };
-    } catch (error) {
-        return { success: false, message: 'Erro ao autenticar o usuário' };
-    }
-};
-
-const authenticate = async (req, res, next) => {
-    const token = req.cookies.access_token;
-
-    if (!token) {
-        return res.redirect('/login'); // Redireciona para a página de login se o token não estiver presente
-    }
-
-    jwt.verify(token, process.env.KEY, (err, decoded) => {
-        if (err) {
-            return res.redirect('/login'); // Redireciona para a página de login se o token não for válido
-        }
-
-        // O token é válido, então podemos prosseguir para a próxima rota
-        req.user = decoded;
-        next();
-    });
-};
-
 router.get("/login", (req, res) => {
     res.render("login");
 });
@@ -167,74 +108,6 @@ router.post("/auth/register", async (req, res) => {
 });
 
 
-router.post('/accessos', async (req, res) => {
-    const { user, password } = req.body;
-
-    db.query('SELECT * FROM users WHERE user = ?', [user], async (err, result) => {
-        if (result.length === 0) {
-            return res.status(401).json({ message: 'Usuário inválido' });
-        }
-
-        const userData = result[0];
-        if (!userData.password) {
-            return res.status(401).json({ message: 'Senha não encontrada para o usuário' });
-        }
-
-        const passwordMatch = await bcrypt.compare(password, userData.password);
-        if (!passwordMatch) {
-            return res.status(401).json({ message: 'Senha incorreta' });
-        }
-
-        const payload = {
-            userId: userData.id,
-            email: userData.email,
-            role: 'user'
-        };
-
-        const token = jwt.sign(payload, process.env.KEY, {
-            expiresIn: '5m' // expira em 5 minutos
-        });
-
-        res.cookie('access_token', token, {
-            httpOnly: true,
-            secure: true, 
-            sameSite: 'lax', 
-            maxAge: 300000 
-        });
-
-        const authenticationResult = await authenticate(user, password, db);
-    
-        if (authenticationResult.success) {
-            res.cookie('access_token', authenticationResult.token, {
-                httpOnly: true,
-                secure: true,
-                sameSite: 'lax',
-                maxAge: 300000 // 5 minutos
-            });
-    
-            // Redireciona para a página "home"
-            return res.redirect('/home');
-        } else {
-            return res.status(401).json({ message: authenticationResult.message });
-        }
-
-
-
-        
-        
-        return res.status(200).json({ user: payload, token: token });
-
-        
-
-    });
-});
-
-
-
-router.get('/home', authenticate, (req, res) => {
-    res.render('home'); // Renderiza a página "home" se o usuário estiver autenticado
-});
-
 router.post('/access', async (req, res) => {
     const { user, password } = req.body;
 
@@ -265,14 +138,77 @@ router.post('/access', async (req, res) => {
 
         res.cookie('access_token', token, {
             httpOnly: true,
-            secure: true, 
-            sameSite: 'lax', 
-            maxAge: 300000 
+            secure: true, // Defina 'secure' como true para conexões HTTPS
+            sameSite: 'lax', // Ajuste o atributo sameSite de acordo com seu caso de uso
+            maxAge: 300000 // 5 minutos em milissegundos
         });
 
-        // Redireciona para a página "home" após o login bem-sucedido
-        return res.redirect('/home');
+        // Send only the necessary data in the response, not the entire 'result' or 'userData' objects
+        return res.status(200).json({ user: payload });
+
     });
+});
+
+
+
+const authenticateUser = async (user, password, db) => {
+    try {
+        const queryResult = await new Promise((resolve, reject) => {
+            db.query('SELECT * FROM users WHERE user = ?', [user], (err, result) => {
+                if (err) reject(err);
+                resolve(result);
+            });
+        });
+
+        if (queryResult.length === 0) {
+            return { success: false, message: 'Usuário inválido' };
+        }
+
+        const userData = queryResult[0];
+        if (!userData.password) {
+            return { success: false, message: 'Senha não encontrada para o usuário' };
+        }
+
+        const passwordMatch = await bcrypt.compare(password, userData.password);
+        if (!passwordMatch) {
+            return { success: false, message: 'Senha incorreta' };
+        }
+
+        const payload = {
+            userId: userData.id,
+            email: userData.email,
+            role: 'user'
+        };
+
+        const token = jwt.sign(payload, process.env.KEY, {
+            expiresIn: '5m' // expira em 5 minutos
+        });
+
+        return { success: true, token };
+    } catch (error) {
+        return { success: false, message: 'Erro ao autenticar o usuário' };
+    }
+};
+
+// Exemplo de uso da função no endpoint '/access'
+router.post('/access', async (req, res) => {
+    const { user, password } = req.body;
+
+    const authenticationResult = await authenticateUser(user, password, db);
+
+    if (authenticationResult.success) {
+        res.cookie('access_token', authenticationResult.token, {
+            httpOnly: true,
+            secure: true, // Defina 'secure' como true para conexões HTTPS
+            sameSite: 'lax', // Ajuste o atributo sameSite de acordo com seu caso de uso
+            maxAge: 300000 // 5 minutos em milissegundos
+        });
+
+        // Send only the necessary data in the response, not the entire 'result' or 'userData' objects
+        return res.status(200).json({ user: { userId: payload.userId, email: payload.email, role: payload.role } });
+    } else {
+        return res.status(401).json({ message: authenticationResult.message });
+    }
 });
 
 
@@ -312,46 +248,36 @@ router.post('/CentroCustosModel', (req, res) => {
     }
 });
 
-router.post('/ConsultaVMensalRefeicaoServida', (req, res) => {
-    const { ccusto, ano_mes_inicio, ano_mes_fim } = req.body;
 
-    const ccustoList = ccusto.map(custo => `'${custo}'`).join(',');
 
-    // Formatar as datas no formato correto (YYYY-MM-DD)
-    const startDate = new Date(ano_mes_inicio.slice(0, 4), parseInt(ano_mes_inicio.slice(4)) - 1, 1).toISOString().substring(0, 10);
-    const endDate = new Date(ano_mes_fim.slice(0, 4), parseInt(ano_mes_fim.slice(4)) - 1, 1).toISOString().substring(0, 10);
 
-    if (ccusto) {
-        pool.query(`
-            SELECT 
-                id_origem,
-                cd_ccusto,
-                date_actual,
-                codigo_unidade,
-                qtd_cafe,
-                qtd_almoco,
-                qtd_jantar,
-                SUM(COALESCE(a.qtd_cafe, 0) + COALESCE(a.qtd_almoco, 0) + COALESCE(a.qtd_jantar, 0)) AS total_refeicoes
-            FROM vi_fipe_refeicoes AS a
-            WHERE date_actual >= $1 AND date_actual <= $2 AND cd_ccusto IN (${ccustoList})
-            GROUP BY id_origem, cd_ccusto, date_actual, codigo_unidade, qtd_cafe, qtd_almoco, qtd_jantar
-        `, [startDate, endDate], (err, result) => {
+router.get('/zi', (req, res) => {
+    const token = req.cookies.access_token;
+
+    if (!token) {
+        return res.status(401).json({ message: 'Token não fornecido' });
+    }
+
+    jwt.verify(token, process.env.KEY, (err, decoded) => {
+        if (err) {
+            return res.status(401).json({ message: 'Token inválido' });
+        }
+
+        const { userId, email, role } = decoded;
+
+        console.log('Payload decodificado:', decoded);
+
+        pool.query("SELECT id_origem, cd_ccusto, convert_from(convert_to(nm_ccusto, 'UTF8'), 'LATIN1') as custo, cd_uge, cd_municipio, tp_ccusto, latitude, longitude, status FROM vi_lista_ccusto", (err, result) => {
             if (err) {
                 console.error('Erro ao executar a consulta', err);
-                return res.status(500).json({ error: 'Erro ao executar a consulta' });
             } else {
-                const response = result.rows.map(item => ({
-                    "id_origem": item.id_origem,
-                    "ano_mes": item.date_actual,
-                    "cd_ccusto": item.cd_ccusto,
-                    "quantitativo": item.total_refeicoes
-                }));
-
-                return res.status(200).json({ response });
+                return res.status(200).json({ result });
             }
         });
-    }
+
+    });
 });
+
 
 
 router.get('/page', (req, res) => {
